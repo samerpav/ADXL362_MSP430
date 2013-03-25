@@ -1,13 +1,10 @@
 /*
-P1.0 <--> LED3
+P1.0 --> LED
 P1.1 --> CS
-P1.2 --> LED1
 P1.3 <-- INT1
-P1.4 --> LED2
 P1.5 --> CLK
 P1.6 --> MOSI
 P1.7 <-- MISO
-P2.6 --> LED4
 */
 
 #include <msp430.h>
@@ -20,11 +17,6 @@ unsigned char ReadStatusRegister();
 
 unsigned char result = 0x0;
 
-unsigned int converting()
-{
-	return ADC10CTL1 & ADC10BUSY;
-}
-
 int main(void)
 {
 	WDTCTL = WDTPW + WDTHOLD; 		// Stop watchdog timer
@@ -32,14 +24,7 @@ int main(void)
 	BCSCTL1 = CALBC1_1MHZ;            // Set range
 	DCOCTL = CALDCO_1MHZ;             // Set DCO step + modulation
 
-	// the only INPUT pin is P1.3 (INT1)
-	P1DIR = 0xFF;
-	P1DIR &= ~BIT3;
-	P1OUT = 0;
-	P2DIR = 0xFF;
-	P2OUT = 0;
-	P2SEL = 0;
-	//P1DIR = BIT6 | BIT5 | BIT0 | BIT1 | BIT2 | BIT4;		-- old code
+	P1DIR = BIT6 | BIT5 | BIT1 | BIT0; 		// configure P1.1, P1.5, P1.6 for USI; P1.0 for LED
 
 	USICTL0 |= USIPE7 + USIPE6 + USIPE5 + USIMST + USIOE;		// setup SPI mode
 	USICTL0 |= USISWRST;						// enable software reset to begin spi init
@@ -49,6 +34,7 @@ int main(void)
 	USICTL1 = USICKPH;
 
 	USICKCTL |= USIDIV_2 | USISSEL_2;		// SPI clock
+
 	USICTL0 &= ~USISWRST; 		// release USI for operation
 
 	// CS disable, set CS high
@@ -56,18 +42,12 @@ int main(void)
 
 	SoftReset();
 
-	// Turn on LED P1.2 if ADXL362 is not found
-//	result = Identify();
-//	if (result==0xAD)
-//		P1OUT &= ~BIT2;
-//	else
-//		P1OUT |= BIT2;
-
-	// turn off LED 1.2
-	P1OUT &= ~BIT2;
-
-	// turn off LED P1.4
-	P1OUT &= ~BIT4;
+	// Turn on LED if ADXL362 is not found
+	result = Identify();
+	if (result==0xAD)
+		P1OUT &= ~BIT0;
+	else
+		P1OUT |= BIT0;
 
 	// set activity threshold to 100 mg
 	WriteByteToRegister( 0x20, 0x64 );
@@ -93,64 +73,16 @@ int main(void)
 #pragma vector=PORT1_VECTOR
 __interrupt void Port_1(void)
 {
-	ADC10CTL0 = ADC10ON | SREF_0 | ADC10SHT_2;
-	ADC10CTL1 = INCH_0 | SHS_0 | ADC10SSEL_0 | ADC10DIV_0 | CONSEQ_0;
-	ADC10CTL0 |= ENC;
-	ADC10AE0 = BIT0;
-	ADC10CTL0 |= ADC10SC; 	// start conversion
-	while (converting());
-	if (ADC10MEM < 340)		// 340 Vss 3.0v, 360 Vss 3.6v
+	int j;
+	for (j=0; j<20; j++)
 	{
-		int j;
-		for (j=0; j<40; j++)
-		{
-			volatile unsigned int i;
+		volatile unsigned int i;
 
-			P1OUT ^= BIT2;
-			i = 2000;
-			do i--;
-			while(i != 0);
-			P1OUT ^= BIT2;
-			i = 3000;
-			do i--;
-			while(i != 0);
-
-			P1OUT ^= BIT4;
-			i = 2000;
-			do i--;
-			while(i != 0);
-			P1OUT ^= BIT4;
-			i = 3000;
-			do i--;
-			while(i != 0);
-
-/*
- * 	P1.0 is used as light sensor
- */
-
-	//		P1OUT ^= BIT0;
-	//		i = 2000;
-	//		do i--;
-	//		while(i != 0);
-	//		P1OUT ^= BIT0;
-	//		i = 2000;
-	//		do i--;
-	//		while(i != 0);
-
-			/*
-			 *	for dog collar, don't use this one to save power
-			 *
-			 */
-			P2OUT ^= BIT6;
-			i = 2000;
-			do i--;
-			while(i != 0);
-			P2OUT ^= BIT6;
-			i = 3000;
-			do i--;
-			while(i != 0);
-		}
-	} // ADC10MEM
+		P1OUT ^= BIT0;
+		i = 10000;
+		do i--;
+		while(i != 0);
+	}
 
 	// acknowledge interrupt by reading STATUS register
 	ReadStatusRegister();
@@ -217,4 +149,3 @@ unsigned char transfer(unsigned char value)
 	r = USISRL;
 	return r;
 }
-
